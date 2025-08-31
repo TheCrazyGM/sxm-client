@@ -1191,7 +1191,7 @@ wheels = [
 
 [[package]]
 name = "sxm"
-version = "0.1.5"
+version = "0.3.0b1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
