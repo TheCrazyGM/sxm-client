@@ -136,3 +136,10 @@ commands =
 
 [tool.pytest.ini_options]
 addopts = "--disable-socket --allow-unix-socket --cov-report=term --cov=sxm --cov-append"
+filterwarnings = [
+  "ignore:There is no current event loop:DeprecationWarning",
+  "ignore:Failing to pass a value to the 'type_params' parameter:DeprecationWarning",
+]
+
+[dependency-groups]
+dev = ["pytest-socket>=0.7.0", "tox>=4.29.0"]

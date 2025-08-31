@@ -1237,6 +1237,12 @@ test = [
     { name = "tox" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest-socket" },
+    { name = "tox" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
@@ -1274,6 +1280,12 @@ requires-dist = [
     { name = "ua-parser" },
 ]
 provides-extras = ["test", "doc", "dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest-socket", specifier = ">=0.7.0" },
+    { name = "tox", specifier = ">=4.29.0" },
+]
 
 [[package]]
 name = "tenacity"

@@ -1,6 +1,6 @@
 import base64
-import inspect
 import datetime
+import inspect
 import json
 import logging
 import re
@@ -412,6 +412,7 @@ class SXMClientAsync:
                     if line.startswith("http"):
                         try:
                             from urllib.parse import urlparse
+
                             path_only = urlparse(line).path.lstrip("/")
                             playlist_entries.append(path_only)
                         except Exception:
@@ -420,6 +421,7 @@ class SXMClientAsync:
                         # relative segment without AAC_Data in url -> join with base dir path component
                         try:
                             from urllib.parse import urlparse
+
                             base_path = urlparse(base_dir).path.lstrip("/")
                             playlist_entries.append(f"{base_path}/{line}")
                         except Exception:
@@ -893,6 +895,7 @@ class SXMClient:
             return make_sync(attr)
         # Resolve awaited values for async @property attributes (coroutines)
         if inspect.isawaitable(attr):
+
             async def _resolve():
                 return await attr
 

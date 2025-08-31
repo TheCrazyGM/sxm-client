@@ -49,9 +49,9 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = u"sxm-client"
-copyright = u"2018, AngellusMortis"  # noqa: A001
-author = u"AngellusMortis"
+project = "sxm-client"
+copyright = "2018, AngellusMortis"  # noqa: A001
+author = "AngellusMortis"
 
 # The version info for the project you're documenting, acts as replacement
 # for |version| and |release|, also used in various other places throughout
@@ -130,8 +130,8 @@ latex_documents = [
     (
         master_doc,
         "sxm.tex",
-        u"sxm-client Documentation",
-        u"AngellusMortis",
+        "sxm-client Documentation",
+        "AngellusMortis",
         "manual",
     )
 ]
@@ -141,7 +141,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "sxm", u"sxm-client Documentation", [author], 1)]
+man_pages = [(master_doc, "sxm", "sxm-client Documentation", [author], 1)]
 
 
 # -- Options for Texinfo output ----------------------------------------
@@ -153,7 +153,7 @@ texinfo_documents = [
     (
         master_doc,
         "sxm",
-        u"sxm-client Documentation",
+        "sxm-client Documentation",
         author,
         "sxm",
         "One line description of project.",

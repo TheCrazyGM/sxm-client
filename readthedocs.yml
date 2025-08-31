@@ -1,9 +1,9 @@
 version: 2
 build:
-    image: latest
+  image: latest
 python:
-    version: "3.8"
-    install:
-        - requirements: dev-requirements.txt
-        - method: pip
-          path: .
+  version: "3.8"
+  install:
+    - requirements: dev-requirements.txt
+    - method: pip
+      path: .

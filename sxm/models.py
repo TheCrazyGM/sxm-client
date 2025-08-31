@@ -8,11 +8,12 @@ try:
     # Pydantic v2
     from pydantic import (
         BaseModel,
+        ConfigDict,
         Field,
         PrivateAttr,
         validator,
-        ConfigDict,
     )
+
     _HAS_PYDANTIC_V2 = True
 except ImportError:  # pragma: no cover - runtime fallback for v1
     from pydantic import (
@@ -21,6 +22,7 @@ except ImportError:  # pragma: no cover - runtime fallback for v1
         PrivateAttr,
         validator,
     )
+
     ConfigDict = None  # type: ignore
     _HAS_PYDANTIC_V2 = False
 
@@ -57,7 +59,8 @@ def parse_xm_datetime(dt_string: str):
 
 
 def parse_xm_timestamp(timestamp: int):
-    return datetime.utcfromtimestamp(timestamp / 1000).replace(tzinfo=timezone.utc)
+    # Use timezone-aware datetime to avoid deprecation warnings
+    return datetime.fromtimestamp(timestamp / 1000, timezone.utc)
 
 
 class QualitySize(str, Enum):
@@ -77,6 +80,7 @@ class SXMBaseModel(BaseModel):
         # v2 style
         model_config = ConfigDict(populate_by_name=True)  # type: ignore
     else:  # v1 style
+
         class Config:  # type: ignore
             allow_population_by_field_name = True
 
@@ -219,11 +223,18 @@ class XMHLSInfo(SXMBaseModel):
             # Normalize any placeholder tokens in the path and join with the configured root
             path = self.url or ""
             # Remove any SXM placeholder tokens that sometimes appear in URLs
-            for token in ("%Live_Primary_HLS%", "%live_primary_hls%", "%Live_Secondary_HLS%", "%live_secondary_hls%"):
+            for token in (
+                "%Live_Primary_HLS%",
+                "%live_primary_hls%",
+                "%Live_Secondary_HLS%",
+                "%live_secondary_hls%",
+            ):
                 if path.startswith(token):
-                    path = path[len(token):]
+                    path = path[len(token) :]
             # Ensure exactly one slash between root and path
-            root = self._primary_root if self.name == "primary" else self._secondary_root
+            root = (
+                self._primary_root if self.name == "primary" else self._secondary_root
+            )
             root = root.rstrip("/")
             path = path.lstrip("/")
             self._url_cache = f"{root}/{path}"
@@ -401,7 +412,6 @@ class XMLiveChannel(SXMBaseModel):
         now : Optional[:class:`datetime`]
         """
         return self._latest_marker("cut_markers", now)  # type: ignore
-
 
     def get_latest_song(
         self, now: Optional[datetime] = None

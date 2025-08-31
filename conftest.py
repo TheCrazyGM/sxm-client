@@ -1,4 +1,3 @@
-import asyncio
 import json
 import pathlib
 from unittest.mock import MagicMock
@@ -36,6 +35,11 @@ def sxm_client(xm_channels_response, xm_live_channel_response):
 
     sxm.get_channels = get_channels
     sxm.get_now_playing = MagicMock(return_value=xm_live_channel_response)
-    sxm.async_client.get_channels = asyncio.coroutine(get_channels)
+
+    # Provide an async version for the async client (Python 3.13: asyncio.coroutine is removed)
+    async def _get_channels_async():
+        return xm_channels_response
+
+    sxm.async_client.get_channels = _get_channels_async  # type: ignore[attr-defined]
 
     return sxm
