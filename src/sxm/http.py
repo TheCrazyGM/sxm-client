@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from asyncio import get_event_loop, sleep
 from time import monotonic
 from typing import Any, Callable, Coroutine, Dict, List, Optional
@@ -106,7 +107,85 @@ def make_http_handler(
         """SXM Response handler"""
 
         response = web.Response(status=404)
-        if request.path.endswith(".m3u8"):
+        if request.path == "/now_playing":
+            # Query param: channel=<id|name|number>
+            channel_q = request.query.get("channel")
+            if not channel_q:
+                return web.Response(status=400)
+
+            try:
+                channel = await sxm.get_channel(channel_q)
+            except Exception as e:  # noqa: BLE001
+                logging.exception("Error resolving channel %s: %s", channel_q, e)
+                channel = None
+
+            if channel is None:
+                return web.Response(status=404)
+
+            try:
+                data = await sxm.get_now_playing(channel)
+            except Exception as e:  # noqa: BLE001
+                logging.exception("Error fetching now playing for %s: %s", channel_q, e)
+                data = None
+
+            if data is None:
+                return web.Response(status=503)
+
+            # Validate response status and extract live channel data
+            try:
+                message_code = data["messages"][0]["code"]
+                if message_code != 100:
+                    return web.Response(status=503)
+                live_channel_data = data["moduleList"]["modules"][0]["moduleResponse"][
+                    "liveChannelData"
+                ]
+            except (KeyError, IndexError):
+                return web.Response(status=500)
+
+            marker_lists = live_channel_data.get("markerLists", [])
+            cut_markers: List[Dict[str, Any]] = []  # type: ignore[name-defined]
+            for marker_list in marker_lists:
+                if marker_list.get("layer") == "cut":
+                    for m in marker_list.get("markers", []):
+                        if "cut" in m:
+                            cut_markers.append(m)
+
+            if not cut_markers:
+                return web.Response(status=503)
+
+            now_ms = int(time.time() * 1000)
+            cut_markers.sort(key=lambda x: x.get("time", 0))
+            latest = None
+            for m in cut_markers:
+                if m.get("time", 0) <= now_ms:
+                    latest = m
+                else:
+                    break
+            if latest is None:
+                latest = cut_markers[-1]
+
+            cut = latest.get("cut", {})
+            title = cut.get("title") or "Unknown"
+            artists = cut.get("artists") or []
+            artist = artists[0]["name"] if artists else "Unknown"
+            album = None
+            if "album" in cut and cut["album"]:
+                album = cut["album"].get("title")
+
+            payload = {
+                "channel_id": channel.id,
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "played_at_ms": latest.get("time"),
+            }
+
+            return web.Response(
+                status=200,
+                body=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+            )
+        elif request.path.endswith(".m3u8"):
             channel_id = request.path.rsplit("/", 1)[1][:-5]
             try:
                 playlist = await get_playlist(channel_id)

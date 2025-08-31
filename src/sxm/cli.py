@@ -37,6 +37,9 @@ OPTION_HOST = typer.Option(
 OPTION_VERBOSE = typer.Option(
     False, "--verbose", "-v", help="Enable debug logging", envvar="SXM_DEBUG"
 )
+OPTION_QUIET = typer.Option(
+    False, "--quiet", "-Q", help="Reduce logging verbosity (ERROR level)", envvar="SXM_QUIET"
+)
 OPTION_REGION = typer.Option(
     RegionChoice.US,
     "--region",
@@ -67,6 +70,7 @@ def server(
     port: int = OPTION_PORT,
     host: str = OPTION_HOST,
     verbose: bool = OPTION_VERBOSE,
+    quiet: bool = OPTION_QUIET,
     region: RegionChoice = OPTION_REGION,
     quality: QualitySize = OPTION_QUALITY,
     precache: bool = OPTION_PRECACHE,
@@ -75,8 +79,10 @@ def server(
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
+    elif quiet:
+        logging.basicConfig(level=logging.ERROR)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.WARNING)
 
     with SXMClient(username, password, region=region, quality=quality) as sxm:
         run_http_server(sxm, port, ip=host, precache=precache)
@@ -88,6 +94,7 @@ def list_channels(
     username: str = OPTION_USERNAME,
     password: str = OPTION_PASSWORD,
     verbose: bool = OPTION_VERBOSE,
+    quiet: bool = OPTION_QUIET,
     region: RegionChoice = OPTION_REGION,
     quality: QualitySize = OPTION_QUALITY,
 ) -> int:
@@ -95,8 +102,10 @@ def list_channels(
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
+    elif quiet:
+        logging.basicConfig(level=logging.ERROR)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.WARNING)
 
     with SXMClient(username, password, region=region, quality=quality) as sxm:
         channels = sxm.channels
@@ -119,6 +128,7 @@ def now_playing(
     username: str = OPTION_USERNAME,
     password: str = OPTION_PASSWORD,
     verbose: bool = OPTION_VERBOSE,
+    quiet: bool = OPTION_QUIET,
     region: RegionChoice = OPTION_REGION,
     quality: QualitySize = OPTION_QUALITY,
 ) -> int:
@@ -126,8 +136,10 @@ def now_playing(
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
+    elif quiet:
+        logging.basicConfig(level=logging.ERROR)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.WARNING)
 
     with SXMClient(username, password, region=region, quality=quality) as sxm:
         # Resolve provided identifier to a channel object first

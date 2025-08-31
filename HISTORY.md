@@ -1,5 +1,11 @@
 # History
 
+## 0.3.0.b2 (2025-08-31)
+
+- Add HTTP JSON endpoint `GET /now_playing?channel=<id|name|number>` to return current track info
+- Add CLI `--quiet`/`-Q` flag (ERROR logging); default logging is WARNING; `--verbose` sets DEBUG
+- Refresh README with quick start and endpoint docs
+
 ## 0.3.0.b1
 
 Everything from here on is my personal additoins to the codebase and
