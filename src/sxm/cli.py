@@ -38,7 +38,11 @@ OPTION_VERBOSE = typer.Option(
     False, "--verbose", "-v", help="Enable debug logging", envvar="SXM_DEBUG"
 )
 OPTION_QUIET = typer.Option(
-    False, "--quiet", "-Q", help="Reduce logging verbosity (ERROR level)", envvar="SXM_QUIET"
+    False,
+    "--quiet",
+    "-Q",
+    help="Reduce logging verbosity (ERROR level)",
+    envvar="SXM_QUIET",
 )
 OPTION_REGION = typer.Option(
     RegionChoice.US,

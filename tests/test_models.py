@@ -85,7 +85,7 @@ def test_live_channel(sxm_client):
         "cut_markers": minimal_cut_marker_list,
     }
 
-    channel = XMLiveChannel.parse_obj(payload)
+    channel = XMLiveChannel.model_validate(payload)
 
     assert channel.id == "octane"
 

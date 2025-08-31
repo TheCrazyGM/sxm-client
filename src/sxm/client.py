@@ -6,8 +6,8 @@ import logging
 import re
 import time
 import traceback
-import urllib.parse
 from typing import Any, Callable, Dict, List, Optional, Union
+from urllib import parse
 
 import httpx
 from fake_useragent import UserAgent  # type: ignore
@@ -184,16 +184,12 @@ class SXMClientAsync:
         It will be fetched from the currently selected HLS root (primary/secondary)
         with token parameters included.
         """
-        try:
-            from urllib.parse import urljoin
-        except Exception:
-            urljoin = None  # type: ignore
 
         # Build absolute URL from current HLS root and provided path
         root = await self.get_hls_root()
         base = root if root.endswith("/") else root + "/"
         rel = path.lstrip("/")
-        url = urljoin(base, rel) if urljoin is not None else f"{base}{rel}"
+        url = parse.urljoin(base, rel)
 
         try:
             res = await self._session.get(url, params=self._token_params())
@@ -213,7 +209,7 @@ class SXMClientAsync:
     def gup_id(self) -> Union[str, None]:
         try:
             data = self._session.cookies["SXMDATA"]
-            return json.loads(urllib.parse.unquote(data))["gupId"]
+            return json.loads(parse.unquote(data))["gupId"]
         except (KeyError, ValueError):
             return None
 
@@ -228,7 +224,7 @@ class SXMClientAsync:
 
             self._channels = []
             for channel in channels:
-                self._channels.append(XMChannel.parse_obj(channel))
+                self._channels.append(XMChannel.model_validate(channel))
 
             self._channels = sorted(self._channels, key=lambda x: int(x.channel_number))
 
@@ -410,22 +406,12 @@ class SXMClientAsync:
                 else:
                     # If the segment line is absolute, keep only its path so the client hits our proxy
                     if line.startswith("http"):
-                        try:
-                            from urllib.parse import urlparse
-
-                            path_only = urlparse(line).path.lstrip("/")
-                            playlist_entries.append(path_only)
-                        except Exception:
-                            playlist_entries.append(f"{base_dir}/{line}")
+                        path_only = parse.urlparse(line).path.lstrip("/")
+                        playlist_entries.append(path_only)
                     else:
                         # relative segment without AAC_Data in url -> join with base dir path component
-                        try:
-                            from urllib.parse import urlparse
-
-                            base_path = urlparse(base_dir).path.lstrip("/")
-                            playlist_entries.append(f"{base_path}/{line}")
-                        except Exception:
-                            playlist_entries.append(f"{base_dir}/{line}")
+                        base_path = parse.urlparse(base_dir).path.lstrip("/")
+                        playlist_entries.append(f"{base_path}/{line}")
             else:
                 playlist_entries.append(line)
 
@@ -760,7 +746,7 @@ class SXMClientAsync:
         self._log.debug(
             f"hlsAudioInfos count: {len(payload['hlsAudioInfos'])}, markerLists present: {len(marker_lists)}"
         )
-        live_channel = XMLiveChannel.parse_obj(payload)
+        live_channel = XMLiveChannel.model_validate(payload)
         live_channel.set_stream_quality(self.stream_quality)
         live_channel.set_hls_roots(
             await self.get_primary_hls_root(), await self.get_secondary_hls_root()
@@ -799,19 +785,12 @@ class SXMClientAsync:
                 continue
             if line.endswith(".m3u8"):
                 # If absolute, return as-is; else join with base URL
-                try:
-                    from urllib.parse import urljoin
-                except Exception:
-                    urljoin = None  # type: ignore
                 if line.startswith("http"):
                     self._log.debug(f"Variant absolute URL: {line}")
                     return line
                 # Use the master playlist's directory as base
                 base = url if url.endswith("/") else f"{url.rsplit('/', 1)[0]}/"
-                if urljoin is not None:
-                    joined = urljoin(base, line)
-                else:
-                    joined = f"{base}{line}"
+                joined = parse.urljoin(base, line)
                 self._log.debug(f"Variant relative URL -> {joined}")
                 return joined
 

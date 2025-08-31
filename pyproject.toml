@@ -96,7 +96,7 @@ filterwarnings = [
 
 [dependency-groups]
 dev = [
-  "pytest-socket>=0.7.0",
+  "pytest-socket",
   "bandit",
   "black",
   "flake8-bugbear",
@@ -111,8 +111,8 @@ dev = [
   "pylint",
   "pyproject-flake8",
   "rstcheck",
-  "typing-extensions~=3.7.4.1",
-  "tox>=4.29.0",
+  "typing-extensions",
+  "tox",
 ]
 doc = ["furo", "sphinx"]
 test = [

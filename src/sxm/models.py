@@ -4,27 +4,14 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional, Union
 
-try:
-    # Pydantic v2
-    from pydantic import (
-        BaseModel,
-        ConfigDict,
-        Field,
-        PrivateAttr,
-        validator,
-    )
-
-    _HAS_PYDANTIC_V2 = True
-except ImportError:  # pragma: no cover - runtime fallback for v1
-    from pydantic import (
-        BaseModel,
-        Field,
-        PrivateAttr,
-        validator,
-    )
-
-    ConfigDict = None  # type: ignore
-    _HAS_PYDANTIC_V2 = False
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 __all__ = [
     "XMArt",
@@ -75,14 +62,7 @@ class RegionChoice(str, Enum):
 
 
 class SXMBaseModel(BaseModel):
-    # Support both Pydantic v1 and v2
-    if _HAS_PYDANTIC_V2:
-        # v2 style
-        model_config = ConfigDict(populate_by_name=True)  # type: ignore
-    else:  # v1 style
-
-        class Config:  # type: ignore
-            allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class XMArt(SXMBaseModel):
@@ -113,17 +93,20 @@ class XMMarker(SXMBaseModel):
     time_seconds: int
     duration: timedelta
 
-    @validator("time", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("time", mode="before")
+    @classmethod
     def _validate_time(cls, v):
         return parse_xm_timestamp(v)
 
-    @validator("time_seconds", pre=True, always=True)  # pylint: disable=no-self-argument
-    def _validate_time_seconds(cls, v, values):
-        return int(values["time"].timestamp())
-
-    @validator("duration", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("duration", mode="before")
+    @classmethod
     def _validate_duration(cls, v):
         return timedelta(seconds=v)
+
+    @model_validator(mode="after")
+    def _compute_time_seconds(self):
+        self.time_seconds = int(self.time.timestamp())
+        return self
 
 
 class XMShow(SXMBaseModel):
@@ -134,7 +117,8 @@ class XMShow(SXMBaseModel):
     long_description: str = Field(..., alias="longDescription")
     arts: List[XMArt] = Field(..., alias="creativeArts")
 
-    @validator("arts", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("arts", mode="before")
+    @classmethod
     def _validate_arts(cls, v):
         return [art for art in v if art["type"] == "IMAGE"]
 
@@ -160,7 +144,8 @@ class XMAlbum(SXMBaseModel):
     title: Optional[str] = None
     arts: List[XMArt] = Field([], alias="creativeArts")
 
-    @validator("arts", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("arts", mode="before")
+    @classmethod
     def _validate_arts(cls, v):
         return [art for art in v if art["type"] == "IMAGE"]
 
@@ -175,7 +160,8 @@ class XMSong(XMCut, SXMBaseModel):
     album: Optional[XMAlbum] = None
     itunes_id: Optional[str] = Field(None, alias="externalIds")
 
-    @validator("itunes_id", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("itunes_id", mode="before")
+    @classmethod
     def _validate_itunes_id(cls, v):
         if v is None:
             return None
@@ -189,18 +175,20 @@ class XMSong(XMCut, SXMBaseModel):
 class XMCutMarker(XMMarker, SXMBaseModel):
     cut: Union[XMSong, XMCut]
 
-    @validator("cut", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("cut", mode="before")
+    @classmethod
     def _validate_cut(cls, v):
         if v.get("cutContentType") == "Song":
-            return XMSong.parse_obj(v)
-        return XMCut.parse_obj(v)
+            return XMSong.model_validate(v)
+        return XMCut.model_validate(v)
 
 
 class XMPosition(SXMBaseModel):
     timestamp: datetime
     position: str
 
-    @validator("timestamp", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("timestamp", mode="before")
+    @classmethod
     def _validate_timestamp(cls, v):
         return parse_xm_datetime(v)
 
@@ -264,11 +252,13 @@ class XMChannel(SXMBaseModel):
     images: List[XMImage]
     categories: List[XMCategory]
 
-    @validator("images", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("images", mode="before")
+    @classmethod
     def _validate_images(cls, v):
         return v["images"]
 
-    @validator("categories", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("categories", mode="before")
+    @classmethod
     def _validate_categories(cls, v):
         return v["categories"]
 
@@ -293,27 +283,30 @@ class XMLiveChannel(SXMBaseModel):
     _primary_hls: Optional[XMHLSInfo] = PrivateAttr(None)
     _secondary_hls: Optional[XMHLSInfo] = PrivateAttr(None)
 
-    @validator("tune_time", pre=True)  # pylint: disable=no-self-argument
-    def _validate_tune_time(cls, v, values):
+    @field_validator("tune_time", mode="before")
+    @classmethod
+    def _validate_tune_time(cls, v):
         return parse_xm_datetime(v)
 
-    @validator("episode_markers", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("episode_markers", mode="before")
+    @classmethod
     def _validate_episode_markers(cls, v):
         markers = []
         for marker_list in v:
             if marker_list["layer"] == "episode":
                 for marker in marker_list["markers"]:
-                    markers.append(XMEpisodeMarker.parse_obj(marker))
+                    markers.append(XMEpisodeMarker.model_validate(marker))
         return sorted(markers, key=lambda x: x.time)
 
-    @validator("cut_markers", pre=True)  # pylint: disable=no-self-argument
+    @field_validator("cut_markers", mode="before")
+    @classmethod
     def _validate_cut_markers(cls, v):
         markers = []
         for marker_list in v:
             if marker_list["layer"] == "cut":
                 for marker in marker_list["markers"]:
                     if "cut" in marker:
-                        markers.append(XMCutMarker.parse_obj(marker))
+                        markers.append(XMCutMarker.model_validate(marker))
         return sorted(markers, key=lambda x: x.time)
 
     def set_stream_quality(self, value: QualitySize):
