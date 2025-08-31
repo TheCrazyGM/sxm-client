@@ -4,14 +4,14 @@
 import typer
 from dotenv import load_dotenv
 
-from sxm.cli import main
+from sxm.cli import app
 
 
 def start():
     """Wrapper around typer entrypoint"""
     load_dotenv()
 
-    typer.run(main)
+    app()
 
 
 if __name__ == "__main__":

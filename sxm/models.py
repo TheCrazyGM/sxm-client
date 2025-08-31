@@ -266,7 +266,7 @@ class XMLiveChannel(SXMBaseModel):
         markers = []
         for marker_list in v:
             if marker_list["layer"] == "episode":
-                for marker in marker_list["markers"]: # pylint: disable=not-an-iterable
+                for marker in marker_list["markers"]:
                     markers.append(XMEpisodeMarker.parse_obj(marker))
         return sorted(markers, key=lambda x: x.time)
 
@@ -275,7 +275,7 @@ class XMLiveChannel(SXMBaseModel):
         markers = []
         for marker_list in v:
             if marker_list["layer"] == "cut":
-                for marker in marker_list["markers"]: # pylint: disable=not-an-iterable
+                for marker in marker_list["markers"]:
                     if "cut" in marker:
                         markers.append(XMCutMarker.parse_obj(marker))
         return sorted(markers, key=lambda x: x.time)
@@ -286,16 +286,16 @@ class XMLiveChannel(SXMBaseModel):
         self._secondary_hls = None
 
     def set_hls_roots(self, primary: str, secondary: str):
-        for hls_info in self.hls_infos: # pylint: disable=not-an-iterable
+        for hls_info in self.hls_infos:
             hls_info.set_hls_roots(primary, secondary)
 
-        for hls_info in self.custom_hls_infos: # pylint: disable=not-an-iterable
+        for hls_info in self.custom_hls_infos:
             hls_info.set_hls_roots(primary, secondary)
 
     @property
     def primary_hls(self) -> XMHLSInfo:
         if self._primary_hls is None:
-            for hls_info in self.hls_infos: # pylint: disable=not-an-iterable
+            for hls_info in self.hls_infos:
                 if hls_info.name == "primary":
                     self._primary_hls = hls_info
                     # found the one we really want
@@ -307,7 +307,7 @@ class XMLiveChannel(SXMBaseModel):
     @property
     def secondary_hls(self) -> XMHLSInfo:
         if self._secondary_hls is None:
-            for hls_info in self.hls_infos: # pylint: disable=not-an-iterable
+            for hls_info in self.hls_infos:
                 if hls_info.name == "secondary":
                     self._secondary_hls = hls_info
                     # found the one we really want

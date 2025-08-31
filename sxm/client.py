@@ -1,4 +1,5 @@
 import base64
+import inspect
 import datetime
 import json
 import logging
@@ -833,8 +834,15 @@ class SXMClient:
         """Sync wrapper for SXMClientAsync"""
         if hasattr(self.async_client, name):
             attr = getattr(self.async_client, name)
+            # Wrap async callables to sync
             if callable(attr):
                 return make_sync(attr)
+            # Resolve awaited values for async @property attributes
+            if inspect.isawaitable(attr):
+                async def _resolve():
+                    return await attr
+
+                return make_sync(_resolve)()
             return attr
         raise AttributeError(
             f"'{type(self).__name__}' object has no attribute '{name}'"
