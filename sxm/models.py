@@ -4,12 +4,25 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional, Union
 
-from pydantic import (
-    BaseModel,
-    Field,
-    PrivateAttr,
-    validator,
-)
+try:
+    # Pydantic v2
+    from pydantic import (
+        BaseModel,
+        Field,
+        PrivateAttr,
+        validator,
+        ConfigDict,
+    )
+    _HAS_PYDANTIC_V2 = True
+except ImportError:  # pragma: no cover - runtime fallback for v1
+    from pydantic import (
+        BaseModel,
+        Field,
+        PrivateAttr,
+        validator,
+    )
+    ConfigDict = None  # type: ignore
+    _HAS_PYDANTIC_V2 = False
 
 __all__ = [
     "XMArt",
@@ -59,8 +72,13 @@ class RegionChoice(str, Enum):
 
 
 class SXMBaseModel(BaseModel):
-    class Config:
-        allow_population_by_field_name = True
+    # Support both Pydantic v1 and v2
+    if _HAS_PYDANTIC_V2:
+        # v2 style
+        model_config = ConfigDict(populate_by_name=True)  # type: ignore
+    else:  # v1 style
+        class Config:  # type: ignore
+            allow_population_by_field_name = True
 
 
 class XMArt(SXMBaseModel):
@@ -198,10 +216,17 @@ class XMHLSInfo(SXMBaseModel):
     @property
     def resolved_url(self):
         if self._url_cache is None:
-            if self.name == "primary":
-                self._url_cache = self._primary_root + self.url
-            else:
-                self._url_cache = self._secondary_root + self.url
+            # Normalize any placeholder tokens in the path and join with the configured root
+            path = self.url or ""
+            # Remove any SXM placeholder tokens that sometimes appear in URLs
+            for token in ("%Live_Primary_HLS%", "%live_primary_hls%", "%Live_Secondary_HLS%", "%live_secondary_hls%"):
+                if path.startswith(token):
+                    path = path[len(token):]
+            # Ensure exactly one slash between root and path
+            root = self._primary_root if self.name == "primary" else self._secondary_root
+            root = root.rstrip("/")
+            path = path.lstrip("/")
+            self._url_cache = f"{root}/{path}"
         return self._url_cache
 
     def set_hls_roots(self, primary: str, secondary: str):
@@ -248,8 +273,8 @@ class XMLiveChannel(SXMBaseModel):
     id: str = Field(..., alias="channelId")  # noqa A003
     hls_infos: List[XMHLSInfo] = Field(..., alias="hlsAudioInfos")
     custom_hls_infos: List[XMHLSInfo] = Field(..., alias="customAudioInfos")
-    episode_markers: List[XMEpisodeMarker]
-    cut_markers: List[XMCutMarker]
+    episode_markers: List[XMEpisodeMarker] = Field(default_factory=list)
+    cut_markers: List[XMCutMarker] = Field(default_factory=list)
     tune_time: Optional[datetime] = None
 
     _stream_quality: QualitySize = PrivateAttr(QualitySize.LARGE_256k)
@@ -311,7 +336,7 @@ class XMLiveChannel(SXMBaseModel):
                 if hls_info.name == "secondary":
                     self._secondary_hls = hls_info
                     # found the one we really want
-                    if hls_info.size == self._stream_quality:
+                    if hls_info.size == self._stream_quality.value:
                         break
 
         return self._secondary_hls  # type: ignore

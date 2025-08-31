@@ -177,6 +177,38 @@ class SXMClientAsync:
         except (KeyError, IndexError):
             return None
 
+    async def get_segment(self, path: str) -> Optional[bytes]:
+        """Fetch a single AAC segment bytes for a given relative path.
+
+        The path is expected to be relative, e.g. "AAC_Data/.../chunk.aac".
+        It will be fetched from the currently selected HLS root (primary/secondary)
+        with token parameters included.
+        """
+        try:
+            from urllib.parse import urljoin
+        except Exception:
+            urljoin = None  # type: ignore
+
+        # Build absolute URL from current HLS root and provided path
+        root = await self.get_hls_root()
+        base = root if root.endswith("/") else root + "/"
+        rel = path.lstrip("/")
+        url = urljoin(base, rel) if urljoin is not None else f"{base}{rel}"
+
+        try:
+            res = await self._session.get(url, params=self._token_params())
+        except httpx.RequestError as e:
+            self._log.error(f"Error fetching AAC segment at {url}: {e}")
+            raise SegmentRetrievalException(str(e)) from e
+
+        if res.is_error or res.content is None:
+            self._log.warning(
+                f"Received status code {res.status_code} for AAC segment {url}"
+            )
+            raise SegmentRetrievalException(f"Bad status {res.status_code}")
+
+        return res.content
+
     @property
     def gup_id(self) -> Union[str, None]:
         try:
@@ -340,25 +372,19 @@ class SXMClientAsync:
         ----------
         channel_id : :class:`str`
             ID of SXM channel to retrieve playlist for
-        use_cache : :class:`bool`
-            Use cached playlists for force new retrival. Defaults to `True`
         """
 
         url = await self._get_playlist_url(channel_id, use_cache)
         if url is None:
+            self._log.warn("No playlist URL available from live channel data")
             return None
 
         response = None
         try:
-            response = await self._make_request("GET", url, self._token_params())
-
-            if response.status_code == 403:
-                self._log.info("Received status code 403 on playlist, renewing session")
-                return await self.get_playlist(channel_id, False)
-
+            response = await self._session.get(url, params=self._token_params())
             if response.is_error:
                 self._log.warn(
-                    f"Received status code {response.status_code} on playlist variant"
+                    f"Received status code {response.status_code} on playlist"
                 )
                 response = None
 
@@ -370,45 +396,38 @@ class SXMClientAsync:
 
         # add base path to segments
         playlist_entries = []
-        aac_path = re.findall("AAC_Data.*", url)[0]
+        aac_path_matches = re.findall("AAC_Data.*", url)
+        aac_path = aac_path_matches[0] if aac_path_matches else None
+        base_dir = url.rsplit("/", 1)[0]
         for line in response.text.split("\n"):
             line = line.strip()
+            if not line:
+                continue
             if line.endswith(".aac"):
-                playlist_entries.append(re.sub(r"[^/]\w+\.m3u8", line, aac_path))
+                if aac_path is not None:
+                    # Build relative AAC_Data/... path based on master m3u8 location
+                    playlist_entries.append(re.sub(r"[^/]+\.m3u8$", line, aac_path))
+                else:
+                    # If the segment line is absolute, keep only its path so the client hits our proxy
+                    if line.startswith("http"):
+                        try:
+                            from urllib.parse import urlparse
+                            path_only = urlparse(line).path.lstrip("/")
+                            playlist_entries.append(path_only)
+                        except Exception:
+                            playlist_entries.append(f"{base_dir}/{line}")
+                    else:
+                        # relative segment without AAC_Data in url -> join with base dir path component
+                        try:
+                            from urllib.parse import urlparse
+                            base_path = urlparse(base_dir).path.lstrip("/")
+                            playlist_entries.append(f"{base_path}/{line}")
+                        except Exception:
+                            playlist_entries.append(f"{base_dir}/{line}")
             else:
                 playlist_entries.append(line)
 
         return "\n".join(playlist_entries)
-
-    @retry(wait=wait_fixed(1), stop=stop_after_attempt(5))
-    async def get_segment(self, path: str) -> Union[bytes, None]:
-        """Gets raw HLS segment for given path
-
-        Parameters
-        ----------
-        path : :class:`str`
-            SXM path
-
-        Raises
-        ------
-        SegmentRetrievalException
-            If segments are starting to come back forbidden and session
-            needs reset
-        """
-
-        url = urllib.parse.urljoin(await self.get_hls_root(), path)
-        res = await self._session.get(url, params=self._token_params())
-
-        if res.status_code == 403:
-            raise SegmentRetrievalException(
-                "Received status code 403 on segment, renew session"
-            )
-
-        if res.is_error:
-            self._log.warn(f"Received status code {res.status_code} on segment")
-            return None
-
-        return res.content
 
     async def get_channels(self) -> List[dict]:
         """Gets raw list of channel dictionaries from SXM. Each channel
@@ -726,27 +745,40 @@ class SXMClientAsync:
             self._log.warn(f"Received error {message_code} {message}")
             return None
 
-        live_channel_raw = data["moduleList"]["modules"][0]
-        live_channel = XMLiveChannel.parse_obj(live_channel_raw)
+        module = data["moduleList"]["modules"][0]
+        live_channel_data = module["moduleResponse"].get("liveChannelData", {})
+        # Build payload expected by XMLiveChannel WITHOUT raw markers to avoid validation errors
+        payload = {
+            "channelId": channel.id,
+            "hlsAudioInfos": live_channel_data.get("hlsAudioInfos", []),
+            "customAudioInfos": live_channel_data.get("customAudioInfos", []),
+        }
+        marker_lists = live_channel_data.get("markerLists", [])
+        self._log.debug(f"Live channel payload keys: {list(payload.keys())}")
+        self._log.debug(
+            f"hlsAudioInfos count: {len(payload['hlsAudioInfos'])}, markerLists present: {len(marker_lists)}"
+        )
+        live_channel = XMLiveChannel.parse_obj(payload)
         live_channel.set_stream_quality(self.stream_quality)
         live_channel.set_hls_roots(
             await self.get_primary_hls_root(), await self.get_secondary_hls_root()
         )
 
-        self.update_interval = int(data["moduleList"]["modules"][0]["updateFrequency"])
+        self.update_interval = int(module["updateFrequency"])
 
         # get m3u8 url
         url = live_channel.primary_hls.resolved_url
         if not self._use_primary:
             url = live_channel.secondary_hls.resolved_url
 
+        self._log.debug(f"Primary playlist URL: {url}")
         playlist = await self._get_playlist_variant_url(url)
         if playlist is not None:
             self._playlists[channel.id] = playlist
             self.last_renew = time.monotonic()
 
             if self.update_handler is not None:
-                self.update_handler(live_channel_raw)
+                self.update_handler(module)
             return self._playlists[channel.id]
         return None
 
@@ -760,9 +792,26 @@ class SXMClientAsync:
             return None
 
         for x in res.text.split("\n"):
-            if x.rstrip().endswith(".m3u8"):
-                # first variant should be 256k one
-                return "{}/{}".format(url.rsplit("/", 1)[0], x.rstrip())
+            line = x.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.endswith(".m3u8"):
+                # If absolute, return as-is; else join with base URL
+                try:
+                    from urllib.parse import urljoin
+                except Exception:
+                    urljoin = None  # type: ignore
+                if line.startswith("http"):
+                    self._log.debug(f"Variant absolute URL: {line}")
+                    return line
+                # Use the master playlist's directory as base
+                base = url if url.endswith("/") else f"{url.rsplit('/', 1)[0]}/"
+                if urljoin is not None:
+                    joined = urljoin(base, line)
+                else:
+                    joined = f"{base}{line}"
+                self._log.debug(f"Variant relative URL -> {joined}")
+                return joined
 
         return None
 
@@ -832,18 +881,20 @@ class SXMClient:
 
     def __getattr__(self, name: str) -> Any:
         """Sync wrapper for SXMClientAsync"""
-        if hasattr(self.async_client, name):
+        try:
             attr = getattr(self.async_client, name)
-            # Wrap async callables to sync
-            if callable(attr):
-                return make_sync(attr)
-            # Resolve awaited values for async @property attributes
-            if inspect.isawaitable(attr):
-                async def _resolve():
-                    return await attr
+        except AttributeError as e:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            ) from e
 
-                return make_sync(_resolve)()
-            return attr
-        raise AttributeError(
-            f"'{type(self).__name__}' object has no attribute '{name}'"
-        )
+        # Wrap async callables to sync
+        if callable(attr):
+            return make_sync(attr)
+        # Resolve awaited values for async @property attributes (coroutines)
+        if inspect.isawaitable(attr):
+            async def _resolve():
+                return await attr
+
+            return make_sync(_resolve)()
+        return attr

@@ -108,7 +108,11 @@ def make_http_handler(
         response = web.Response(status=404)
         if request.path.endswith(".m3u8"):
             channel_id = request.path.rsplit("/", 1)[1][:-5]
-            playlist = await get_playlist(channel_id)
+            try:
+                playlist = await get_playlist(channel_id)
+            except Exception as e:  # noqa: BLE001
+                logging.exception("Error generating playlist for %s: %s", channel_id, e)
+                playlist = None
 
             if playlist:
                 response = web.Response(
