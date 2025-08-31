@@ -123,14 +123,12 @@ class SXMClientAsync:
         user_agent: Optional[str] = None,
         update_handler: Optional[Callable[[dict], None]] = None,
     ):
-
         self._log = logging.getLogger(__file__)
 
         if user_agent is None:
             try:
-                ua = UserAgent(use_cache_server=False)
-                ua.update()
-                user_agent = ua.chrome
+                ua = UserAgent()
+                user_agent = str(ua.chrome)
             except Exception:
                 user_agent = FALLBACK_UA
         self._ua = user_agent_parser.Parse(user_agent)
@@ -154,8 +152,11 @@ class SXMClientAsync:
         # hook function to call whenever the playlist updates
         self.update_handler = update_handler
 
-    def __del__(self):
-        make_sync(self.close_session)()
+    async def __aenter__(self) -> "SXMClientAsync":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close_session()
 
     @property
     def is_logged_in(self) -> bool:
@@ -194,7 +195,7 @@ class SXMClientAsync:
 
             self._channels = []
             for channel in channels:
-                self._channels.append(XMChannel.from_dict(channel))
+                self._channels.append(XMChannel.parse_obj(channel))
 
             self._channels = sorted(self._channels, key=lambda x: int(x.channel_number))
 
@@ -202,7 +203,6 @@ class SXMClientAsync:
 
     @property
     async def favorite_channels(self) -> List[XMChannel]:
-
         if self._favorite_channels is None:
             self._favorite_channels = [c for c in await self.channels if c.is_favorite]
         return self._favorite_channels
@@ -274,7 +274,7 @@ class SXMClientAsync:
                 "standardAuth": {
                     "username": self.username,
                     "password": self.password,
-                }
+                },
             }
         )
 
@@ -329,7 +329,9 @@ class SXMClientAsync:
 
     @retry(stop=stop_after_attempt(25), wait=wait_fixed(1))
     async def get_playlist(
-        self, channel_id: str, use_cache: bool = True
+        self,
+        channel_id: str,
+        use_cache: bool = True,
     ) -> Union[str, None]:
         """Gets playlist of HLS stream URLs for given channel ID
 
@@ -355,8 +357,7 @@ class SXMClientAsync:
 
             if response.is_error:
                 self._log.warn(
-                    f"Received status code {response.status_code} on "
-                    f"playlist variant"
+                    f"Received status code {response.status_code} on playlist variant"
                 )
                 response = None
 
@@ -372,7 +373,7 @@ class SXMClientAsync:
         for line in response.text.split("\n"):
             line = line.strip()
             if line.endswith(".aac"):
-                playlist_entries.append(re.sub(r"[^\/]\w+\.m3u8", line, aac_path))
+                playlist_entries.append(re.sub(r"[^/]\w+\.m3u8", line, aac_path))
             else:
                 playlist_entries.append(line)
 
@@ -465,7 +466,10 @@ class SXMClientAsync:
                 return x
         return None
 
-    async def get_now_playing(self, channel: XMChannel) -> Union[Dict[str, Any], None]:
+    async def get_now_playing(
+        self,
+        channel: XMChannel,
+    ) -> Union[Dict[str, Any], None]:
         """Gets raw dictionary of response data for the live channel.
 
         `data['messages'][0]['code']`
@@ -525,9 +529,9 @@ class SXMClientAsync:
 
         browser_version = self._ua["user_agent"]["major"]
         if self._ua["user_agent"]["minor"] is not None:
-            browser_version = f'{browser_version}.{self._ua["user_agent"]["minor"]}'
+            browser_version = f"{browser_version}.{self._ua['user_agent']['minor']}"
         if self._ua["user_agent"]["patch"] is not None:
-            browser_version = f'{browser_version}.{self._ua["user_agent"]["patch"]}'
+            browser_version = f"{browser_version}.{self._ua['user_agent']['patch']}"
 
         return {
             "resultTemplate": "web",
@@ -566,8 +570,7 @@ class SXMClientAsync:
                 raise httpx.RequestError("only GET and POST")
         except httpx.RequestError as e:
             self._log.error(
-                f"An Exception occurred when trying to perform "
-                f"the {method} request!"
+                f"An Exception occurred when trying to perform the {method} request!"
             )
             self._log.error(f"Params: {params}")
             self._log.error(f"Method: {method}")
@@ -599,7 +602,6 @@ class SXMClientAsync:
                 self.reset_session()
 
             if not self.is_session_authenticated and not await self.authenticate():
-
                 self._log.error("Unable to authenticate")
                 return None
 
@@ -607,7 +609,7 @@ class SXMClientAsync:
 
         if response.is_error:
             self._log.warn(
-                f"Received status code {response.status_code} for " f"path '{path}'"
+                f"Received status code {response.status_code} for path '{path}'"
             )
             self._log.warn(f"Response: {response.text}")
             return None
@@ -674,7 +676,6 @@ class SXMClientAsync:
                 self.last_renew is None
                 or (now - self.last_renew) > self.update_interval
             ):
-
                 del self._playlists[channel.id]
             else:
                 return self._playlists[channel.id]
@@ -725,7 +726,7 @@ class SXMClientAsync:
             return None
 
         live_channel_raw = data["moduleList"]["modules"][0]
-        live_channel = XMLiveChannel.from_dict(live_channel_raw)
+        live_channel = XMLiveChannel.parse_obj(live_channel_raw)
         live_channel.set_stream_quality(self.stream_quality)
         live_channel.set_hls_roots(
             await self.get_primary_hls_root(), await self.get_secondary_hls_root()
@@ -734,9 +735,9 @@ class SXMClientAsync:
         self.update_interval = int(data["moduleList"]["modules"][0]["updateFrequency"])
 
         # get m3u8 url
-        url = live_channel.primary_hls.url
+        url = live_channel.primary_hls.resolved_url
         if not self._use_primary:
-            url = live_channel.secondary_hls.url
+            url = live_channel.secondary_hls.resolved_url
 
         playlist = await self._get_playlist_variant_url(url)
         if playlist is not None:
@@ -753,8 +754,7 @@ class SXMClientAsync:
 
         if res.is_error:
             self._log.warn(
-                f"Received status code {res.status_code} on playlist "
-                f"variant retrieval"
+                f"Received status code {res.status_code} on playlist variant retrieval"
             )
             return None
 
@@ -814,7 +814,6 @@ class SXMClient:
         user_agent: Optional[str] = None,
         update_handler: Optional[Callable[[dict], None]] = None,
     ):
-
         self.async_client = SXMClientAsync(
             username=username,
             password=password,
@@ -824,141 +823,19 @@ class SXMClient:
             update_handler=update_handler,
         )
 
-    @property
-    def last_renew(self) -> Optional[float]:
-        return self.async_client.last_renew
+    def __enter__(self) -> "SXMClient":
+        return self
 
-    @property
-    def password(self) -> str:
-        return self.async_client.password
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close_session()
 
-    @property
-    def region(self) -> RegionChoice:
-        return self.async_client.region
-
-    @property
-    def update_handler(self) -> Optional[Callable[[dict], None]]:
-        return self.async_client.update_handler
-
-    @property
-    def update_interval(self) -> int:
-        return self.async_client.update_interval
-
-    @property
-    def username(self) -> str:
-        return self.async_client.username
-
-    @property
-    def stream_quality(self) -> QualitySize:
-        return self.async_client.stream_quality
-
-    @property
-    def is_logged_in(self) -> bool:
-        return self.async_client.is_logged_in
-
-    @property
-    def is_session_authenticated(self) -> bool:
-        return self.async_client.is_session_authenticated
-
-    @property
-    def sxmak_token(self) -> Union[str, None]:
-        return self.async_client.sxmak_token
-
-    @property
-    def gup_id(self) -> Union[str, None]:
-        return self.async_client.gup_id
-
-    @property
-    def channels(self) -> List[XMChannel]:
-        # download channel list if necessary
-        if self.async_client._channels is None:
-            channels = self.get_channels()
-
-            if len(channels) == 0:
-                return []
-
-            self.async_client._channels = []
-            for channel in channels:
-                self.async_client._channels.append(XMChannel.from_dict(channel))
-
-            self.async_client._channels = sorted(
-                self.async_client._channels, key=lambda x: int(x.channel_number)
-            )
-
-        return self.async_client._channels
-
-    @property
-    def favorite_channels(self) -> List[XMChannel]:
-
-        if self.async_client._favorite_channels is None:
-            self.async_client._favorite_channels = [
-                c for c in self.channels if c.is_favorite
-            ]
-        return self.async_client._favorite_channels
-
-    @property
-    def configuration(self) -> dict:
-        if self.async_client._configuration is None:
-            data = self.get_configuration()
-            if data is None:
-                raise ConfigurationError()
-
-            self.async_client._configuration = self.async_client._extract_configuration(
-                data
-            )
-        return self.async_client._configuration
-
-    @property
-    def urls(self) -> Dict[str, str]:
-        if self.async_client._urls is None:
-            urls = self.configuration["relativeUrls"]
-            self.async_client._urls = self.async_client._extract_urls(urls)
-        return self.async_client._urls
-
-    @property
-    def primary(self) -> bool:
-        return self.async_client._use_primary
-
-    def get_primary_hls_root(self) -> str:
-        return make_sync(self.async_client.get_primary_hls_root)()
-
-    def get_secondary_hls_root(self) -> str:
-        return make_sync(self.async_client.get_secondary_hls_root)()
-
-    def get_hls_root(self) -> str:
-        return make_sync(self.async_client.get_hls_root)()
-
-    def set_primary(self, value: bool):
-        self.async_client.set_primary(value)
-
-    def login(self) -> bool:
-        return make_sync(self.async_client.login)()
-
-    def authenticate(self) -> bool:
-        return make_sync(self.async_client.authenticate)()
-
-    def get_configuration(self) -> Optional[Dict[str, Any]]:
-        return make_sync(self.async_client.get_configuration)()
-
-    def get_playlist(self, channel_id: str, use_cache: bool = True) -> Union[str, None]:
-        return make_sync(self.async_client.get_playlist)(
-            channel_id=channel_id, use_cache=use_cache
+    def __getattr__(self, name: str) -> Any:
+        """Sync wrapper for SXMClientAsync"""
+        if hasattr(self.async_client, name):
+            attr = getattr(self.async_client, name)
+            if callable(attr):
+                return make_sync(attr)
+            return attr
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
         )
-
-    def get_segment(self, path: str) -> Union[bytes, None]:
-        return make_sync(self.async_client.get_segment)(path=path)
-
-    def get_channels(self) -> List[dict]:
-        return make_sync(self.async_client.get_channels)()
-
-    def get_channel(self, name: str) -> Union[XMChannel, None]:
-        return make_sync(self.async_client.get_channel)(name)
-
-    def get_now_playing(self, channel: XMChannel) -> Union[Dict[str, Any], None]:
-        return make_sync(self.async_client.get_now_playing)(channel)
-
-    def close_session(self):
-        return make_sync(self.async_client.close_session)()
-
-    def reset_session(self):
-        return self.async_client.reset_session()

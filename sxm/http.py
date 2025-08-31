@@ -1,4 +1,5 @@
 """HTTP Server module for sxm"""
+
 import json
 import logging
 from asyncio import get_event_loop, sleep
