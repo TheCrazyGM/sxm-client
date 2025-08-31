@@ -1191,7 +1191,7 @@ wheels = [
 
 [[package]]
 name = "sxm"
-version = "0.1.0"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1205,7 +1205,7 @@ dependencies = [
     { name = "ua-parser" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "bandit" },
     { name = "black" },
@@ -1220,7 +1220,9 @@ dev = [
     { name = "pip-tools" },
     { name = "pylint" },
     { name = "pyproject-flake8" },
+    { name = "pytest-socket" },
     { name = "rstcheck" },
+    { name = "tox" },
     { name = "typing-extensions" },
 ]
 doc = [
@@ -1237,54 +1239,51 @@ test = [
     { name = "tox" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "pytest-socket" },
-    { name = "tox" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "bandit", marker = "extra == 'dev'" },
-    { name = "black", marker = "extra == 'dev'" },
-    { name = "coverage", marker = "extra == 'test'" },
     { name = "fake-useragent" },
-    { name = "flake8", marker = "extra == 'dev'" },
-    { name = "flake8-bugbear", marker = "extra == 'dev'" },
-    { name = "flake8-builtins", marker = "extra == 'dev'" },
-    { name = "flake8-commas", marker = "extra == 'dev'" },
-    { name = "flake8-comprehensions", marker = "extra == 'dev'" },
-    { name = "flit", marker = "extra == 'dev'" },
-    { name = "furo", marker = "extra == 'doc'" },
     { name = "httpx" },
-    { name = "isort", marker = "extra == 'dev'" },
     { name = "make-it-sync" },
-    { name = "mypy", marker = "extra == 'dev'" },
-    { name = "pip-tools", marker = "extra == 'dev'" },
     { name = "pydantic" },
-    { name = "pylint", marker = "extra == 'dev'" },
-    { name = "pyproject-flake8", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'test'" },
-    { name = "pytest-clarity", marker = "extra == 'test'" },
-    { name = "pytest-cov", marker = "extra == 'test'" },
-    { name = "pytest-socket", marker = "extra == 'test'" },
-    { name = "pytest-sugar", marker = "extra == 'test'" },
     { name = "python-dotenv" },
-    { name = "rstcheck", marker = "extra == 'dev'" },
-    { name = "sphinx", marker = "extra == 'doc'" },
     { name = "tenacity" },
-    { name = "tox", marker = "extra == 'test'" },
     { name = "typer", specifier = "==0.17.3" },
-    { name = "typing-extensions", marker = "extra == 'dev'", specifier = "~=3.7.4.1" },
     { name = "ua-parser" },
 ]
-provides-extras = ["test", "doc", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "bandit" },
+    { name = "black" },
+    { name = "flake8" },
+    { name = "flake8-bugbear" },
+    { name = "flake8-builtins" },
+    { name = "flake8-commas" },
+    { name = "flake8-comprehensions" },
+    { name = "flit" },
+    { name = "isort" },
+    { name = "mypy" },
+    { name = "pip-tools" },
+    { name = "pylint" },
+    { name = "pyproject-flake8" },
     { name = "pytest-socket", specifier = ">=0.7.0" },
+    { name = "rstcheck" },
     { name = "tox", specifier = ">=4.29.0" },
+    { name = "typing-extensions", specifier = "~=3.7.4.1" },
+]
+doc = [
+    { name = "furo" },
+    { name = "sphinx" },
+]
+test = [
+    { name = "coverage" },
+    { name = "pytest" },
+    { name = "pytest-clarity" },
+    { name = "pytest-cov" },
+    { name = "pytest-socket" },
+    { name = "pytest-sugar" },
+    { name = "tox" },
 ]
 
 [[package]]

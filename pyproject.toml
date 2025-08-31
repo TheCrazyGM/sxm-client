@@ -1,14 +1,17 @@
 [build-system]
-requires = ["flit_core >=3,<4"]
-build-backend = "flit_core.buildapi"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "sxm"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.5"
+description = "For Personal Use Only"
 readme = "README.md"
 requires-python = ">=3.13"
-authors = [{ name = "AngellusMortis", email = "cbailey@mort.is" }]
+authors = [
+  { name = "AngellusMortis", email = "cbailey@mort.is" },
+  { name = "Michael Garcia", email = "thecrazygm@gmail.com" },
+]
 license = { text = "MIT license" }
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -37,34 +40,8 @@ dependencies = [
   "ua-parser",
 ]
 
-[project.optional-dependencies]
-test = [
-  "pytest",
-  "pytest-cov",
-  "pytest-socket",
-  "pytest-sugar",
-  "pytest-clarity",
-  "tox",
-  "coverage",
-]
-doc = ["furo", "sphinx"]
-dev = [
-  "bandit",
-  "black",
-  "flake8-bugbear",
-  "flake8-builtins",
-  "flake8-commas",
-  "flake8-comprehensions",
-  "flake8",
-  "flit",
-  "isort",
-  "mypy",
-  "pip-tools",
-  "pylint",
-  "pyproject-flake8",
-  "rstcheck",
-  "typing-extensions~=3.7.4.1",
-]
+[tool.uv]
+default-groups = []
 
 [project.urls]
 Homepage = "https://github.com/AngellusMortis/sxm-client"
@@ -73,32 +50,8 @@ Documentation = "https://sxm-client.readthedocs.io/en/latest/"
 [project.scripts]
 sxm = "sxm.__main__:start"
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-versions = 'py39'
-include = '\.pyi?$'
-exclude = '''
-
-(
-  /(
-      \.eggs         # exclude a few common directories in the
-    | \.git          # root of the project
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-  )/
-)
-'''
-
-[tool.flake8]
-exclude = ".eggs, .git, .tox, dist"
-ignore = "C812, W503, C816, C815, B008"
-max-line-length = 88
 
 [tool.pylint.format]
 max-line = 88
@@ -135,11 +88,39 @@ commands =
 """
 
 [tool.pytest.ini_options]
-addopts = "--disable-socket --allow-unix-socket --cov-report=term --cov=sxm --cov-append"
+addopts = "--disable-socket --allow-unix-socket"
 filterwarnings = [
   "ignore:There is no current event loop:DeprecationWarning",
   "ignore:Failing to pass a value to the 'type_params' parameter:DeprecationWarning",
 ]
 
 [dependency-groups]
-dev = ["pytest-socket>=0.7.0", "tox>=4.29.0"]
+dev = [
+  "pytest-socket>=0.7.0",
+  "bandit",
+  "black",
+  "flake8-bugbear",
+  "flake8-builtins",
+  "flake8-commas",
+  "flake8-comprehensions",
+  "flake8",
+  "flit",
+  "isort",
+  "mypy",
+  "pip-tools",
+  "pylint",
+  "pyproject-flake8",
+  "rstcheck",
+  "typing-extensions~=3.7.4.1",
+  "tox>=4.29.0",
+]
+doc = ["furo", "sphinx"]
+test = [
+  "pytest",
+  "pytest-cov",
+  "pytest-socket",
+  "pytest-sugar",
+  "pytest-clarity",
+  "tox",
+  "coverage",
+]
