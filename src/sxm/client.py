@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime
 import inspect
@@ -37,6 +38,15 @@ REST_V4_FORMAT = "https://player.siriusxm.com/rest/v4/experience/modules/{}"
 SESSION_MAX_LIFE = 14400
 
 ENABLE_NEW_CHANNELS = True
+
+
+def _ensure_event_loop() -> asyncio.AbstractEventLoop:
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
 
 
 class SXMError(Exception):
@@ -871,6 +881,7 @@ class SXMClient:
 
         # Wrap async callables to sync
         if callable(attr):
+            _ensure_event_loop()
             return make_sync(attr)
         # Resolve awaited values for async @property attributes (coroutines)
         if inspect.isawaitable(attr):
@@ -878,5 +889,6 @@ class SXMClient:
             async def _resolve():
                 return await attr
 
+            _ensure_event_loop()
             return make_sync(_resolve)()
         return attr
