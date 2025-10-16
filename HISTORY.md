@@ -1,5 +1,9 @@
 # History
 
+## 0.3.0.b3 (2025-10-16)
+
+- Fix: ensure event loop exists for async operations in SXM client and HTTP server
+
 ## 0.3.0.b2 (2025-08-31)
 
 - Add HTTP JSON endpoint `GET /now_playing?channel=<id|name|number>` to return current track info
