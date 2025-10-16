@@ -134,6 +134,7 @@ class SXMClientAsync:
         user_agent: Optional[str] = None,
         update_handler: Optional[Callable[[dict], None]] = None,
     ):
+        _ensure_event_loop()
         self._log = logging.getLogger(__file__)
 
         if user_agent is None:
@@ -855,6 +856,7 @@ class SXMClient:
         user_agent: Optional[str] = None,
         update_handler: Optional[Callable[[dict], None]] = None,
     ):
+        _ensure_event_loop()
         self.async_client = SXMClientAsync(
             username=username,
             password=password,

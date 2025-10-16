@@ -1,5 +1,6 @@
 """HTTP Server module for sxm"""
 
+import asyncio
 import json
 import logging
 import time
@@ -265,6 +266,12 @@ def run_http_server(
     if logger is None:
         logger = logging.getLogger(__file__)
 
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
     if not sxm.authenticate():
         logging.fatal("Could not log into SXM")
         exit(1)
@@ -281,6 +288,7 @@ def run_http_server(
             app,
             host=ip,
             port=port,
+            loop=loop,
             access_log=logger,
             print=None,  # type: ignore
         )
