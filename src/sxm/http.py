@@ -10,7 +10,13 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from aiohttp import web
 
-from sxm.client import HLS_AES_KEY, SegmentRetrievalException, SXMClient, SXMClientAsync
+from sxm.client import (
+    HLS_AES_KEY,
+    ConfigurationError,
+    SegmentRetrievalException,
+    SXMClient,
+    SXMClientAsync,
+)
 
 __all__ = ["make_http_handler", "run_http_server"]
 
@@ -272,12 +278,20 @@ def run_http_server(
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-    if not sxm.authenticate():
-        logging.fatal("Could not log into SXM")
-        exit(1)
+    async def _bootstrap_client() -> bool:
+        if not await sxm.async_client.authenticate():
+            logger.fatal("Could not log into SXM")
+            return False
 
-    if not sxm.configuration:
-        logging.fatal("Could not get SXM configuration")
+        try:
+            await sxm.async_client.configuration
+        except ConfigurationError:
+            logger.fatal("Could not get SXM configuration")
+            return False
+
+        return True
+
+    if not loop.run_until_complete(_bootstrap_client()):
         exit(1)
 
     app = web.Application()

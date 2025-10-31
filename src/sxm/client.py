@@ -588,16 +588,11 @@ class SXMClientAsync:
             else:
                 raise httpx.RequestError("only GET and POST")
         except httpx.RequestError as e:
-            self._log.error(
-                f"An Exception occurred when trying to perform the {method} request!"
-            )
-            self._log.error(f"Params: {params}")
-            self._log.error(f"Method: {method}")
-            self._log.error(f"Request: {e.request}")
-
+            self._log.error(f"{method} {path} request failed: {e}")
+            self._log.debug(f"Params: {params}")
             if isinstance(e, httpx.HTTPStatusError):
-                self._log.error(f"Response: {e.response}")  # pylint: disable=no-member
-            raise (e)
+                self._log.debug(f"Response: {e.response}")  # pylint: disable=no-member
+            raise
 
         return response
 

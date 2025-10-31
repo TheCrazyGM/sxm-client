@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "sxm"
-version = "0.3.0b3"
+version = "0.3.1"
 description = "For Personal Use Only"
 readme = "README.md"
 requires-python = ">=3.13"
