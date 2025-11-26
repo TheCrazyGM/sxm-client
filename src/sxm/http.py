@@ -40,13 +40,34 @@ def make_http_handler(
     aac_cache: Dict[str, bytes] = {}
     playlist_cache: Dict[str, str] = {}
     active_channel_id: Optional[str] = None
+    cache_task: Optional[asyncio.Task] = None
+
+    async def stop_cache_task():
+        nonlocal active_channel_id, cache_task
+        active_channel_id = None
+        if cache_task is not None:
+            cache_task.cancel()
+            try:
+                await cache_task
+            except asyncio.CancelledError:
+                pass
+            cache_task = None
+        aac_cache.clear()
+        playlist_cache.clear()
 
     def set_active(channel_id: Optional[str], initial_playlist: Optional[str] = None):
+        nonlocal active_channel_id, cache_task
         active_channel_id = channel_id  # pylint: disable=unused-variable  # noqa
+
+        if cache_task is not None:
+            cache_task.cancel()
+            cache_task = None
 
         if precache and channel_id is not None and initial_playlist is not None:
             loop = get_event_loop()
-            loop.create_task(cache_playlist(channel_id, initial_playlist.split("\n")))
+            cache_task = loop.create_task(
+                cache_playlist(channel_id, initial_playlist.split("\n"))
+            )
 
     async def get_segment(path: str):
         try:
@@ -78,16 +99,24 @@ def make_http_handler(
     async def cache_playlist(channel_id: str, playlist: List[str]):
         start = monotonic() - 3
 
-        while active_channel_id == channel_id:
-            await cache_playlist_chunks(start + 5, playlist)
+        try:
+            while active_channel_id == channel_id:
+                await cache_playlist_chunks(start + 5, playlist)
 
-            new_playlist: Optional[str] = None
-            while new_playlist is None:
-                new_playlist = await sxm.get_playlist(channel_id)
+                new_playlist: Optional[str] = None
+                while new_playlist is None and active_channel_id == channel_id:
+                    new_playlist = await sxm.get_playlist(channel_id)
+                    if new_playlist is None:
+                        await sleep(1)
 
-            playlist_cache[channel_id] = new_playlist
-            playlist = new_playlist.split("\n")
-            start = monotonic()
+                if active_channel_id != channel_id or new_playlist is None:
+                    break
+
+                playlist_cache[channel_id] = new_playlist
+                playlist = new_playlist.split("\n")
+                start = monotonic()
+        except asyncio.CancelledError:
+            return
 
     async def get_playlist_chunk(segment_path: str):
         if segment_path in aac_cache:
@@ -105,7 +134,9 @@ def make_http_handler(
         else:
             playlist = await sxm.get_playlist(channel_id)
 
-        if active_channel_id != channel_id and playlist is not None:
+        if playlist is None:
+            set_active(None)
+        elif active_channel_id != channel_id:
             set_active(channel_id, playlist)
 
         return playlist
@@ -244,6 +275,11 @@ def make_http_handler(
 
         return response
 
+    async def _cleanup_handler():
+        await stop_cache_task()
+
+    sxm_handler.cleanup = _cleanup_handler  # type: ignore[attr-defined]
+
     return sxm_handler
 
 
@@ -294,8 +330,18 @@ def run_http_server(
     if not loop.run_until_complete(_bootstrap_client()):
         exit(1)
 
+    handler = make_http_handler(sxm.async_client, precache=precache)
+
     app = web.Application()
-    app.router.add_get("/{_:.*}", make_http_handler(sxm.async_client))
+    app.router.add_get("/{_:.*}", handler)
+
+    async def _cleanup(app: web.Application):  # pylint: disable=unused-argument
+        cleanup_cb = getattr(handler, "cleanup", None)
+        if cleanup_cb is not None:
+            await cleanup_cb()
+        await sxm.async_client.close_session()
+
+    app.on_cleanup.append(_cleanup)
     try:
         logger.info(f"running SXM proxy server on http://{ip}:{port}")
         web.run_app(

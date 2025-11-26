@@ -196,25 +196,52 @@ class SXMClientAsync:
         with token parameters included.
         """
 
-        # Build absolute URL from current HLS root and provided path
-        root = await self.get_hls_root()
-        base = root if root.endswith("/") else root + "/"
         rel = path.lstrip("/")
-        url = parse.urljoin(base, rel)
 
-        try:
-            res = await self._session.get(url, params=self._token_params())
-        except httpx.RequestError as e:
-            self._log.error(f"Error fetching AAC segment at {url}: {e}")
-            raise SegmentRetrievalException(str(e)) from e
+        async def _fetch(root: str) -> bytes:
+            base = root if root.endswith("/") else root + "/"
+            url = parse.urljoin(base, rel)
+            try:
+                res = await self._session.get(url, params=self._token_params())
+            except httpx.RequestError as e:
+                self._log.error(f"Error fetching AAC segment at {url}: {e}")
+                raise SegmentRetrievalException(str(e)) from e
 
-        if res.is_error or res.content is None:
-            self._log.warning(
-                f"Received status code {res.status_code} for AAC segment {url}"
-            )
-            raise SegmentRetrievalException(f"Bad status {res.status_code}")
+            if res.is_error or res.content is None:
+                self._log.warning(
+                    f"Received status code {res.status_code} for AAC segment {url}"
+                )
+                raise SegmentRetrievalException(f"Bad status {res.status_code}")
+            return res.content
 
-        return res.content
+        current_primary = self._use_primary
+        roots = [await self.get_hls_root()]
+        other_root = (
+            await self.get_secondary_hls_root()
+            if current_primary
+            else await self.get_primary_hls_root()
+        )
+        if other_root not in roots:
+            roots.append(other_root)
+
+        for idx, root in enumerate(roots):
+            root_is_primary = current_primary if idx == 0 else not current_primary
+            try:
+                data = await _fetch(root)
+                if self._use_primary != root_is_primary:
+                    # Update state to whichever root is working
+                    self.set_primary(root_is_primary, reset_playlists=False)
+                return data
+            except SegmentRetrievalException:
+                if idx == len(roots) - 1:
+                    raise
+                self._log.warning(
+                    "Segment retrieval failed on %s HLS, trying the %s endpoint",
+                    "primary" if current_primary else "secondary",
+                    "secondary" if current_primary else "primary",
+                )
+
+        return None
 
     @property
     def gup_id(self) -> Union[str, None]:
@@ -300,9 +327,10 @@ class SXMClientAsync:
             return await self.get_primary_hls_root()
         return await self.get_secondary_hls_root()
 
-    def set_primary(self, value: bool):
+    def set_primary(self, value: bool, reset_playlists: bool = True):
         self._use_primary = value
-        self._playlists = {}
+        if reset_playlists:
+            self._playlists = {}
 
     async def login(self) -> bool:
         """Attempts to log into SXM with stored username/password"""
@@ -685,17 +713,22 @@ class SXMClientAsync:
             return None
 
         now = time.monotonic()
-        if use_cache and channel.id in self._playlists:
-            if (
-                self.last_renew is None
-                or (now - self.last_renew) > self.update_interval
-            ):
-                del self._playlists[channel.id]
-            else:
-                return self._playlists[channel.id]
+        cached_playlist = self._playlists.get(channel.id)
+        cache_age = (now - self.last_renew) if self.last_renew is not None else None
+        cache_valid = (
+            use_cache and cached_playlist is not None and cache_age is not None
+        )
+        if cache_valid and cache_age <= self.update_interval:
+            return cached_playlist
 
         data = await self.get_now_playing(channel)
         if data is None:
+            if cached_playlist is not None:
+                self._log.warn(
+                    "Live channel data unavailable for %s, serving cached playlist",
+                    channel.id,
+                )
+                return cached_playlist
             return None
 
         # parse response
@@ -737,6 +770,12 @@ class SXMClientAsync:
                 return None
         elif message_code != 100:
             self._log.warn(f"Received error {message_code} {message}")
+            if cached_playlist is not None:
+                self._log.warn(
+                    "Falling back to cached playlist for %s after error response",
+                    channel.id,
+                )
+                return cached_playlist
             return None
 
         module = data["moduleList"]["modules"][0]
@@ -761,23 +800,54 @@ class SXMClientAsync:
         self.update_interval = int(module["updateFrequency"])
 
         # get m3u8 url
-        url = live_channel.primary_hls.resolved_url
-        if not self._use_primary:
-            url = live_channel.secondary_hls.resolved_url
+        selected_primary = self._use_primary
+        url = (
+            live_channel.primary_hls.resolved_url
+            if selected_primary
+            else live_channel.secondary_hls.resolved_url
+        )
 
         self._log.debug(f"Primary playlist URL: {url}")
         playlist = await self._get_playlist_variant_url(url)
+        if playlist is None:
+            alt_url = (
+                live_channel.secondary_hls.resolved_url
+                if selected_primary
+                else live_channel.primary_hls.resolved_url
+            )
+            self._log.warning(
+                "Playlist fetch failed on %s HLS for %s, retrying %s endpoint",
+                "primary" if selected_primary else "secondary",
+                channel.id,
+                "secondary" if selected_primary else "primary",
+            )
+            playlist = await self._get_playlist_variant_url(alt_url)
+            if playlist is not None:
+                selected_primary = not selected_primary
+
         if playlist is not None:
+            if selected_primary != self._use_primary:
+                self.set_primary(selected_primary, reset_playlists=False)
             self._playlists[channel.id] = playlist
             self.last_renew = time.monotonic()
 
             if self.update_handler is not None:
                 self.update_handler(module)
             return self._playlists[channel.id]
+        if cached_playlist is not None:
+            self._log.warn(
+                "Failed to refresh playlist for %s, serving cached copy",
+                channel.id,
+            )
+            return cached_playlist
         return None
 
     async def _get_playlist_variant_url(self, url: str) -> Union[str, None]:
-        res = await self._session.get(url, params=self._token_params())
+        try:
+            res = await self._session.get(url, params=self._token_params())
+        except httpx.RequestError as e:
+            self._log.error(f"Error retrieving playlist variant {url}: {e}")
+            return None
 
         if res.is_error:
             self._log.warn(
