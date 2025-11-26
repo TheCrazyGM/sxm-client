@@ -121,7 +121,7 @@ class SXMClientAsync:
     _playlists: Dict[str, str]
     _use_primary: bool
     _ua: Dict[str, Any]
-    _session: httpx.AsyncClient
+    _session: Optional[httpx.AsyncClient]
     _configuration: Optional[Dict] = None
     _urls: Optional[Dict[str, str]] = None
 
@@ -172,18 +172,23 @@ class SXMClientAsync:
 
     @property
     def is_logged_in(self) -> bool:
-        return "SXMAUTHNEW" in self._session.cookies
+        return bool(self._session and "SXMAUTHNEW" in self._session.cookies)
 
     @property
     def is_session_authenticated(self) -> bool:
-        return (
-            "AWSALB" in self._session.cookies and "JSESSIONID" in self._session.cookies
+        return bool(
+            self._session
+            and "AWSALB" in self._session.cookies
+            and "JSESSIONID" in self._session.cookies
         )
 
     @property
     def sxmak_token(self) -> Union[str, None]:
+        session = self._session
+        if session is None:
+            return None
         try:
-            token = self._session.cookies["SXMAKTOKEN"]
+            token = session.cookies["SXMAKTOKEN"]
             return token.split("=", 1)[1].split(",", 1)[0]
         except (KeyError, IndexError):
             return None
@@ -201,8 +206,9 @@ class SXMClientAsync:
         async def _fetch(root: str) -> bytes:
             base = root if root.endswith("/") else root + "/"
             url = parse.urljoin(base, rel)
+            session = self._get_session()
             try:
-                res = await self._session.get(url, params=self._token_params())
+                res = await session.get(url, params=self._token_params())
             except httpx.RequestError as e:
                 self._log.error(f"Error fetching AAC segment at {url}: {e}")
                 raise SegmentRetrievalException(str(e)) from e
@@ -245,8 +251,11 @@ class SXMClientAsync:
 
     @property
     def gup_id(self) -> Union[str, None]:
+        session = self._session
+        if session is None:
+            return None
         try:
-            data = self._session.cookies["SXMDATA"]
+            data = session.cookies["SXMDATA"]
             return json.loads(parse.unquote(data))["gupId"]
         except (KeyError, ValueError):
             return None
@@ -415,8 +424,9 @@ class SXMClientAsync:
             return None
 
         response = None
+        session = self._get_session()
         try:
-            response = await self._session.get(url, params=self._token_params())
+            response = await session.get(url, params=self._token_params())
             if response.is_error:
                 self._log.warn(
                     f"Received status code {response.status_code} on playlist"
@@ -564,6 +574,12 @@ class SXMClientAsync:
         self._urls = None
         self._configuration = None
 
+    def _get_session(self) -> httpx.AsyncClient:
+        if self._session is None:
+            self.reset_session()
+        assert self._session is not None
+        return self._session
+
     def _token_params(self) -> Dict[str, Union[str, None]]:
         return {
             "token": self.sxmak_token,
@@ -608,11 +624,12 @@ class SXMClientAsync:
         else:
             url = url_format.format(path)
 
+        session = self._get_session()
         try:
             if method == "GET":
-                response = await self._session.get(url, params=params)
+                response = await session.get(url, params=params)
             elif method == "POST":
-                response = await self._session.post(url, json=params)
+                response = await session.post(url, json=params)
             else:
                 raise httpx.RequestError("only GET and POST")
         except httpx.RequestError as e:
@@ -715,10 +732,12 @@ class SXMClientAsync:
         now = time.monotonic()
         cached_playlist = self._playlists.get(channel.id)
         cache_age = (now - self.last_renew) if self.last_renew is not None else None
-        cache_valid = (
-            use_cache and cached_playlist is not None and cache_age is not None
-        )
-        if cache_valid and cache_age <= self.update_interval:
+        if (
+            use_cache
+            and cached_playlist is not None
+            and cache_age is not None
+            and cache_age <= self.update_interval
+        ):
             return cached_playlist
 
         data = await self.get_now_playing(channel)
@@ -843,8 +862,9 @@ class SXMClientAsync:
         return None
 
     async def _get_playlist_variant_url(self, url: str) -> Union[str, None]:
+        session = self._get_session()
         try:
-            res = await self._session.get(url, params=self._token_params())
+            res = await session.get(url, params=self._token_params())
         except httpx.RequestError as e:
             self._log.error(f"Error retrieving playlist variant {url}: {e}")
             return None

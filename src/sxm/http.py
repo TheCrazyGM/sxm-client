@@ -287,7 +287,7 @@ def run_http_server(
     sxm: SXMClient,
     port: int,
     ip="0.0.0.0",  # nosec
-    logger: logging.Logger = None,
+    logger: Optional[logging.Logger] = None,
     precache: bool = True,
 ) -> None:
     """

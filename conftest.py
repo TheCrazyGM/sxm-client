@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sxm import SXMClient
+from sxm import RegionChoice, SXMClient
 
 BASE_DIR = pathlib.Path(__file__).parent.absolute()
 SAMPLE_DIR = BASE_DIR / "tests" / "sample_data"
@@ -30,11 +30,13 @@ def xm_live_channel_response():
 
 @pytest.fixture
 def sxm_client(xm_channels_response, xm_live_channel_response):
-    sxm = SXMClient("user", "password", region="US")
+    sxm = SXMClient("user", "password", region=RegionChoice.US)
     get_channels = MagicMock(return_value=xm_channels_response)
 
-    sxm.get_channels = get_channels
-    sxm.get_now_playing = MagicMock(return_value=xm_live_channel_response)
+    sxm.get_channels = get_channels  # type: ignore[attr-defined]
+    sxm.get_now_playing = MagicMock(  # type: ignore[attr-defined]
+        return_value=xm_live_channel_response
+    )
 
     # Provide an async version for the async client (Python 3.13: asyncio.coroutine is removed)
     async def _get_channels_async():
