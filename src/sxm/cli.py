@@ -56,13 +56,12 @@ OPTION_QUALITY = typer.Option(
     "--quality",
     "-q",
     help="Sets stream qualuty.",
-    envvar="SXM_REGION",
+    envvar="SXM_QUALITY",
 )
 OPTION_PRECACHE = typer.Option(
     True,
-    "--no-precache",
-    "-n",
-    help="Turn off precaching AAC chunks",
+    "--precache/--no-precache",
+    help="Enable or disable precaching AAC chunks",
     envvar="SXM_PRECACHE",
 )
 
