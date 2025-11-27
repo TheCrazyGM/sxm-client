@@ -9,6 +9,6 @@
 - Big thanks to andrew0 \<<andrew0@github.com>\> for reverse
   engineering the original SXM APIs used
 
-## Peronal Addtions
+## Personal Additions
 
 - Michael Garcia <thecrazygm@gmail.com>

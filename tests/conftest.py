@@ -7,7 +7,7 @@ import pytest
 from sxm import RegionChoice, SXMClient
 
 BASE_DIR = pathlib.Path(__file__).parent.absolute()
-SAMPLE_DIR = BASE_DIR / "tests" / "sample_data"
+SAMPLE_DIR = BASE_DIR / "sample_data"
 
 
 @pytest.fixture
